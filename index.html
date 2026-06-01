@@ -6871,8 +6871,13 @@ window.addEventListener('appinstalled', () => {
             if (!chatContainer || !tasksContainer) return;
 
             const activeTimerEnd = localStorage.getItem('hms_active_timer_end');
+            
+            // 🛡️ التعديل الذهبي: التحقق هل المؤقت فعال ومتبقي به وقت حقيقي أم انتهى وتجاوز الوقت الحالي
+            const isTimerActive = activeTimerEnd && (parseInt(activeTimerEnd) > Date.now());
+            
             const liveTimerUI = document.getElementById('live-group-timer-ui');
-            const isBreakTime = liveTimerUI && liveTimerUI.innerText.includes('استراحة');
+            // تأكيد أننا في فترة الاستراحة ولم تنتهِ بعد
+            const isBreakTime = liveTimerUI && liveTimerUI.innerText.includes('استراحة') && !liveTimerUI.innerText.includes('انتهت');
 
             const totalBankMsgs = parseInt(localStorage.getItem('hms_chat_unlocked_msgs') || '0');
             const sessionUsedMsgs = parseInt(localStorage.getItem('hms_session_msg_count') || '0');
@@ -6903,7 +6908,8 @@ window.addEventListener('appinstalled', () => {
                 </div>
             `;
 
-            if (!activeTimerEnd && !isBreakTime) {
+            // قفل الدردشة فوراً إذا لم يكن هناك مؤقت يعمل حالياً أو إذا انتهى وقته الفعلي
+            if (!isTimerActive && !isBreakTime) {
                 chatContainer.innerHTML = `<div class="p-4 text-center text-xs font-bold text-slate-500 bg-slate-100 dark:bg-slate-800"><i class="fa-solid fa-lock text-xl mb-2 block"></i> الدردشة والمهام مغلقة. بانتظار بدء الجلسة من المسؤول.</div>`;
                 tasksContainer.innerHTML = '';
                 return;
