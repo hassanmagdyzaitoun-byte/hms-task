@@ -7057,7 +7057,13 @@ window.addEventListener('appinstalled', () => {
 
                     if (timeElapsed < minimumTimeRequired) {
                         const remainingSeconds = Math.ceil((minimumTimeRequired - timeElapsed) / 1000);
-                        showToast("التركيز مطلوب! ⏱️", `يرجى التركيز على المهمة لـ ${remainingSeconds} ثانية أخرى قبل إتمامها لضمان المصداقية.`);
+                        
+                        // 🔔 تشغيل الصوت التحذيري للغرفة
+                        playBeep("alarm");
+                        
+                        // ⚠️ إظهار نافذة تنبيه منبثقة إجبارية للمستخدم
+                        alert(`🛑 تنبيه من نظام الحماية:\n\nالمهمة صُنعت حديثاً! يرجى التركيز والعمل عليها لمدة [ ${remainingSeconds} ثانية ] إضافية قبل تعليمها كمكتملة لضمان مصداقية الغرفة.`);
+                        
                         renderChatInputArea(); // إعادة رسم الواجهة لإلغاء تفعيل الصح فوراً
                         return; // الخروج الفوري وإلغاء العملية
                     }
