@@ -7028,13 +7028,18 @@ window.addEventListener('appinstalled', () => {
             const groupTasksKey = `hms_group_tasks_${currentGroupId}`;
             const tasks = JSON.parse(localStorage.getItem(groupTasksKey) || '[]');
             
-            tasks.push({ id: 'gst-' + Date.now(), text: text, completed: false });
+            tasks.push({ 
+                id: 'gst-' + Date.now(), 
+                text: text, 
+                completed: false,
+                createdAt: Date.now() // ⏱️ تسجيل وقت إنشاء المهمة بدقة لمنع ثغرة الإنجاز الفوري
+            });
             
             localStorage.setItem(groupTasksKey, JSON.stringify(tasks));
             renderChatInputArea();
         }
 
-        // دالة تحديث حالة المهمة (محدثة لرفع الإنجاز للسيرفر للوحة الشرف والهدف الجماعي)
+        // دالة تحديث حالة المهمة (محدثة لرفع الإنجاز للسيرفر للوحة الشرف والهدف الجماعي وبث اسم المهمة وحظر ثغرة الـ 3 دقائق)
         function toggleGroupStudyTask(id) {
             const groupTasksKey = `hms_group_tasks_${currentGroupId}`;
             const tasks = JSON.parse(localStorage.getItem(groupTasksKey) || '[]');
@@ -7042,6 +7047,22 @@ window.addEventListener('appinstalled', () => {
             
             if (task) {
                 const wasCompleted = task.completed;
+
+                // 🛡️ فحص الثغرة: منع إتمام المهمة قبل مرور 3 دقائق (180 ثانية) من إنشائها
+                if (!wasCompleted) { 
+                    // استخراج وقت الإنشاء أو حسابه من المعرف الفريد للمهمة كخيار احتياطي آمن
+                    const createdAt = task.createdAt || parseInt(task.id.replace('gst-', '')) || Date.now();
+                    const timeElapsed = Date.now() - createdAt;
+                    const minimumTimeRequired = 3 * 60 * 1000; // 3 دقائق بالمللي ثانية
+
+                    if (timeElapsed < minimumTimeRequired) {
+                        const remainingSeconds = Math.ceil((minimumTimeRequired - timeElapsed) / 1000);
+                        showToast("التركيز مطلوب! ⏱️", `يرجى التركيز على المهمة لـ ${remainingSeconds} ثانية أخرى قبل إتمامها لضمان المصداقية.`);
+                        renderChatInputArea(); // إعادة رسم الواجهة لإلغاء تفعيل الصح فوراً
+                        return; // الخروج الفوري وإلغاء العملية
+                    }
+                }
+                
                 task.completed = !task.completed; 
                 localStorage.setItem(groupTasksKey, JSON.stringify(tasks));
                 
@@ -7057,6 +7078,13 @@ window.addEventListener('appinstalled', () => {
                     // زيادة شريط الهدف الجماعي
                     db.ref(`groups/${userGender}/${currentGroupId}/info/collectiveProgress`).transaction((progress) => {
                         return (progress || 0) + 1;
+                    });
+
+                    // إرسال اسم المهمة التي أنجزها العضو فوراً إلى الدردشة
+                    db.ref(`groups/${userGender}/${currentGroupId}/chat`).push({
+                        senderId: 'system',
+                        text: `🎉 أنهى [${userName}] مهمة: (${task.text})`,
+                        timestamp: Date.now()
                     });
 
                 } else {
