@@ -7097,7 +7097,8 @@ window.addEventListener('appinstalled', () => {
                 });
             }
         }
-        // 1. دالة لتشفير ونسخ بيانات الهوية ككود أمان مشفر
+        
+        // 1. دالة لتشفير ونسخ بيانات الهوية ككود أمان مشفر مباشرة في الحافظة
         function copyGroupProfileCode() {
             const name = localStorage.getItem('hms_user_name');
             const gender = localStorage.getItem('hms_user_gender');
@@ -7113,7 +7114,8 @@ window.addEventListener('appinstalled', () => {
 
             if (navigator.clipboard && window.isSecureContext) {
                 navigator.clipboard.writeText(safeCode).then(() => {
-                    showToast("تم النسخ بنجاح ✅", "تم نسخ كود هويتك بنجاح، احفظه لتستعيده على جهازك الآخر.");
+                    // 💡 تم تحديث الرسالة لتوضح النسخ المباشر في الحافظة
+                    showToast("تم النسخ بنجاح ✅", "تم حفظ كود الهوية في حافظة الكيبورد، يمكنك لصقه الآن على جهازك الآخر.");
                 });
             } else {
                 prompt("انسخ كود هويتك الفريد التالي لنقله للجهاز الآخر:", safeCode);
