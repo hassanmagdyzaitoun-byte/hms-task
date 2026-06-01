@@ -6851,7 +6851,10 @@ window.addEventListener('appinstalled', () => {
 
             const totalBankMsgs = parseInt(localStorage.getItem('hms_chat_unlocked_msgs') || '0');
             const sessionUsedMsgs = parseInt(localStorage.getItem('hms_session_msg_count') || '0');
-            const remainingInSession = Math.max(0, 3 - sessionUsedMsgs);
+            const remainingFree = Math.max(0, 3 - sessionUsedMsgs);
+            
+            // مسموح بالإرسال لو تبقى رسائل مجانية بالجلسة أو توفر رصيد بالبنك
+            const canSend = (remainingFree > 0) || (totalBankMsgs > 0);
 
             const groupTasksKey = `hms_group_tasks_${currentGroupId}`;
             const tasks = JSON.parse(localStorage.getItem(groupTasksKey) || '[]');
@@ -6879,39 +6882,45 @@ window.addEventListener('appinstalled', () => {
             }
 
             if (isBreakTime) {
-                if (totalBankMsgs > 0 && remainingInSession > 0) {
-                    chatContainer.innerHTML = `
-                        <div class="px-4 py-2 flex justify-between items-center bg-emerald-50 dark:bg-emerald-900/20 border-b border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold">
-                            <span>☕ استراحة نشطة (مسموح بـ ${remainingInSession} رسائل)</span>
-                            <span>🏦 الرصيد: ${totalBankMsgs}</span>
-                        </div>
-                        ${emojisHtml}
-                        <div class="p-3 flex gap-2 items-center relative">
-                            <input type="text" id="chat-input-msg" onkeydown="if(event.key === 'Enter') sendGroupMessage()" placeholder="تحدث مع زملائك..." class="flex-1 bg-slate-50 dark:bg-slate-800 text-sm px-4 py-2.5 rounded-full outline-none border border-slate-200 dark:border-slate-700 focus:ring-1 focus:ring-emerald-500 text-slate-800 dark:text-white">
-                            <button type="button" onclick="sendGroupMessage()" class="w-10 h-10 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center transition-colors shadow-md shrink-0"><i class="fa-solid fa-paper-plane"></i></button>
-                        </div>
-                    `;
-                } else {
-                    chatContainer.innerHTML = `${emojisHtml}<div class="p-3 text-center text-xs font-bold text-slate-500 bg-slate-100 dark:bg-slate-800">رصيد الرسائل انتهى. استخدم التفاعلات السريعة بالأعلى!</div>`;
-                }
+                // وقت الاستراحة مجاني تماماً وبدون أي عداد ليرتاح الجميع ويتحدثوا بحرية
+                chatContainer.innerHTML = `
+                    <div class="px-4 py-2 flex justify-between items-center bg-emerald-50 dark:bg-emerald-900/20 border-b border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold">
+                        <span>☕ وقت الاستراحة! الدردشة مفتوحة ومجانية بالكامل للجميع الآن.</span>
+                    </div>
+                    ${emojisHtml}
+                    <div class="p-3 flex gap-2 items-center relative">
+                        <input type="text" id="chat-input-msg" onkeydown="if(event.key === 'Enter') sendGroupMessageDirectlyWithoutLimit()" placeholder="تحدث مع زملائك..." class="flex-1 bg-slate-50 dark:bg-slate-800 text-sm px-4 py-2.5 rounded-full outline-none border border-slate-200 dark:border-slate-700 focus:ring-1 focus:ring-emerald-500 text-slate-800 dark:text-white">
+                        <button type="button" onclick="sendGroupMessageDirectlyWithoutLimit()" class="w-10 h-10 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center transition-colors shadow-md shrink-0"><i class="fa-solid fa-paper-plane"></i></button>
+                    </div>
+                `;
                 tasksContainer.innerHTML = `<div class="bg-white dark:bg-slate-900 rounded-2xl border border-emerald-200 dark:border-emerald-800/50 p-4 shadow-sm text-center"><i class="fa-solid fa-mug-hot text-3xl text-emerald-400 mb-2 animate-bounce"></i><h4 class="font-bold text-sm text-emerald-600 dark:text-emerald-400">وقت الراحة!</h4></div>`;
                 return;
             }
 
-            if (totalBankMsgs > 0 && remainingInSession > 0) {
+            if (canSend) {
+                // تحديد النص التعريفي بناءً على نوع الرصيد المستخدم حالياً
+                const statusBannerText = remainingFree > 0 
+                    ? `🔓 متبقي لك: ${remainingFree} رسائل مجانية في هذه الجلسة`
+                    : `🏦 استهلكت المجاني! تسحب الآن من رصيد البنك الإضافي المتاح: ${totalBankMsgs} رسالة`;
+
                 chatContainer.innerHTML = `
                     <div class="px-4 py-2 flex justify-between items-center ${activeBg} border-b text-[10px] font-bold">
-                        <span>🔓 مسموح بـ ${remainingInSession} رسائل الآن</span>
-                        <span>🏦 الرصيد: ${totalBankMsgs}</span>
+                        <span>${statusBannerText}</span>
+                        <span>البنك: ${totalBankMsgs}</span>
                     </div>
                     ${emojisHtml}
                     <div class="p-3 flex gap-2 items-center relative">
-                        <input type="text" id="chat-input-msg" onkeydown="if(event.key === 'Enter') sendGroupMessage()" placeholder="اكتب رسالة سريعة..." class="flex-1 bg-slate-50 dark:bg-slate-800 text-sm px-4 py-2.5 rounded-full outline-none border border-slate-200 dark:border-slate-700 focus:ring-1 focus:ring-indigo-500 text-slate-800 dark:text-white">
+                        <input type="text" id="chat-input-msg" onkeydown="if(event.key === 'Enter') sendGroupMessage()" placeholder="اكتب رسالة..." class="flex-1 bg-slate-50 dark:bg-slate-800 text-sm px-4 py-2.5 rounded-full outline-none border border-slate-200 dark:border-slate-700 focus:ring-1 focus:ring-indigo-500 text-slate-800 dark:text-white">
                         <button type="button" onclick="sendGroupMessage()" class="w-10 h-10 rounded-full ${activeColor} text-white flex items-center justify-center transition-colors shadow-md shrink-0"><i class="fa-solid fa-paper-plane"></i></button>
                     </div>
                 `;
             } else {
-                chatContainer.innerHTML = `${emojisHtml}<div class="p-3 text-center text-xs font-bold text-slate-500 bg-slate-100 dark:bg-slate-800">رصيدك 0 من الرسائل. استخدم التفاعلات السريعة!</div>`;
+                chatContainer.innerHTML = `
+                    ${emojisHtml}
+                    <div class="p-3 text-center text-xs font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 flex flex-col gap-1 items-center justify-center">
+                        <span>🛑 استهلكت رسائلك المجانية للجلسة، وليس لديك رصيد في البنك.</span>
+                        <span class="text-[10px] text-indigo-500">أنجز بعض المهام ليرتفع رصيدك البنكي وتتحدث مجدداً! 🚀</span>
+                    </div>`;
             }
 
             let tasksHtml = '';
@@ -6960,7 +6969,6 @@ window.addEventListener('appinstalled', () => {
                 </div>
             `;
             
-            // استدعاء دالة الهدف الجماعي لتحديثه إذا كان موجوداً
             fetchCollectiveGoal();
         }
 
@@ -6974,30 +6982,38 @@ window.addEventListener('appinstalled', () => {
             let totalBankMsgs = parseInt(localStorage.getItem('hms_chat_unlocked_msgs') || '0');
             let sessionUsedMsgs = parseInt(localStorage.getItem('hms_session_msg_count') || '0');
 
-            if (sessionUsedMsgs >= 3) {
-                showToast("الحد الأقصى 🛑", "لقد استهلكت الـ 3 رسائل المسموحة في هذه الجلسة. ركز فيما تفعله!");
+            // 1. استخدام الـ 3 رسائل المجانية المخصصة للجلسة أولاً دون الخصم من البنك
+            if (sessionUsedMsgs < 3) {
+                db.ref(`groups/${userGender}/${currentGroupId}/chat`).push({
+                    senderId: currentUser.uid,
+                    senderName: userName,
+                    text: text,
+                    timestamp: Date.now()
+                }).then(() => {
+                    localStorage.setItem('hms_session_msg_count', sessionUsedMsgs + 1);
+                    renderChatInputArea(); // تحديث شريط الإدخال والعداد
+                });
+            } 
+            // 2. إذا انتهت الرسائل المجانية، يتم السحب من رصيد البنك الإضافي المكتسب من المهام
+            else if (totalBankMsgs > 0) {
+                db.ref(`groups/${userGender}/${currentGroupId}/chat`).push({
+                    senderId: currentUser.uid,
+                    senderName: userName,
+                    text: text,
+                    timestamp: Date.now()
+                }).then(() => {
+                    // الخصم من البنك وزيادة عداد الجلسة الحالي
+                    localStorage.setItem('hms_chat_unlocked_msgs', totalBankMsgs - 1);
+                    localStorage.setItem('hms_session_msg_count', sessionUsedMsgs + 1);
+                    renderChatInputArea(); // تحديث شريط الإدخال والعداد
+                });
+            } 
+            // 3. إذا لم يمتلك رسائل مجانية في الجلسة الحالية ولا يمتلك رصيداً في البنك
+            else {
+                showToast("انتهى الرصيد 🛑", "لقد استهلكت رسائلك المجانية للجلسة الحالية، وليس لديك رصيد إضافي بالبنك.");
                 renderChatInputArea();
                 return;
             }
-
-            if (totalBankMsgs <= 0) {
-                showToast("رصيد فارغ", "ليس لديك رسائل مخزنة لإرسالها.");
-                renderChatInputArea();
-                return;
-            }
-
-            // الإرسال لقاعدة البيانات
-            db.ref(`groups/${userGender}/${currentGroupId}/chat`).push({
-                senderId: currentUser.uid,
-                senderName: userName,
-                text: text,
-                timestamp: Date.now()
-            }).then(() => {
-                // الخصم من البنك وزيادة العداد الحالي
-                localStorage.setItem('hms_chat_unlocked_msgs', totalBankMsgs - 1);
-                localStorage.setItem('hms_session_msg_count', sessionUsedMsgs + 1);
-                renderChatInputArea(); // تحديث الواجهة
-            });
 
             input.value = '';
         }
@@ -7061,7 +7077,19 @@ window.addEventListener('appinstalled', () => {
         
         // تم دمج النظام، هذه الدالة للرجوع فقط لمنع الأخطاء
         function sendGroupMessageDirectlyWithoutLimit() {
-            sendGroupMessage();
+            const input = document.getElementById('chat-input-msg');
+            if(!input) return;
+            const text = input.value.trim();
+            if (!text || !currentGroupId) return;
+
+            db.ref(`groups/${userGender}/${currentGroupId}/chat`).push({
+                senderId: currentUser.uid,
+                senderName: userName,
+                text: text,
+                timestamp: Date.now()
+            });
+
+            input.value = '';
         }
 
         function addGroupStudyTask() {
