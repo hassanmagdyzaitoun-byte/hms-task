@@ -7047,12 +7047,13 @@ window.addEventListener('appinstalled', () => {
             
             if (task) {
                 const wasCompleted = task.completed;
+                
+                // ⏱️ استخراج وقت الإنشاء وحساب الوقت المنقضي في أعلى نطاق الدالة لتكون متاحة للفحص وللإرسال
+                const createdAt = task.createdAt || parseInt(task.id.replace('gst-', '')) || Date.now();
+                const timeElapsed = Date.now() - createdAt;
 
                 // 🛡️ فحص الثغرة: منع إتمام المهمة قبل مرور 3 دقائق (180 ثانية) من إنشائها
                 if (!wasCompleted) { 
-                    // استخراج وقت الإنشاء أو حسابه من المعرف الفريد للمهمة كخيار احتياطي آمن
-                    const createdAt = task.createdAt || parseInt(task.id.replace('gst-', '')) || Date.now();
-                    const timeElapsed = Date.now() - createdAt;
                     const minimumTimeRequired = 3 * 60 * 1000; // 3 دقائق بالمللي ثانية
 
                     if (timeElapsed < minimumTimeRequired) {
@@ -7086,10 +7087,13 @@ window.addEventListener('appinstalled', () => {
                         return (progress || 0) + 1;
                     });
 
-                    // إرسال اسم المهمة التي أنجزها العضو فوراً إلى الدردشة
+                    // ⏱️ حساب الدقائق الفعلية المستغرقة لإنجاز المهمة بدقة
+                    const minutesTaken = Math.round(timeElapsed / (60 * 1000));
+
+                    // إرسال اسم المهمة التي أنجزها العضو فوراً إلى الدردشة مع وقت الإنجاز الفعلي
                     db.ref(`groups/${userGender}/${currentGroupId}/chat`).push({
                         senderId: 'system',
-                        text: `🎉 أنهى [${userName}] مهمة: (${task.text})`,
+                        text: `🎉 أنهى [${userName}] مهمة: (${task.text}) في ${minutesTaken} دقيقة`,
                         timestamp: Date.now()
                     });
 
