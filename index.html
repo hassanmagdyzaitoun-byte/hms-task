@@ -6447,45 +6447,6 @@ window.addEventListener('appinstalled', () => {
             // تنظيف شريط المدخلات
             document.getElementById('chat-input-container').innerHTML = '';
         }
-
-        function sendGroupMessage() {
-            const input = document.getElementById('chat-input-msg');
-            const text = input.value.trim();
-            if (!text || !currentGroupId) return;
-
-            let msgsLeft = parseInt(localStorage.getItem('hms_chat_unlocked_msgs') || '0');
-            if (msgsLeft <= 0) return;
-
-            // حماية الجلسة: فحص ما إذا كنا داخل جلسة بومودورو ومنع إرسال أكثر من 5 رسائل
-            const activeTimerEnd = localStorage.getItem('hms_active_timer_end');
-            if (activeTimerEnd) {
-                let sessionMsgs = JSON.parse(localStorage.getItem('hms_session_msgs') || '{}');
-                // تصفير العداد إذا كانت هذه جلسة بومودورو جديدة
-                if (sessionMsgs.timerEnd !== activeTimerEnd) {
-                    sessionMsgs = { timerEnd: activeTimerEnd, count: 0 };
-                }
-                // المنع إذا تخطى 5 رسائل
-                if (sessionMsgs.count >= 5) {
-                    showToast("تنبيه 🛑", "لقد استهلكت الحد الأقصى (5 رسائل) المسموح بها أثناء جلسة التركيز الحالية. ركز في مذاكرتك!");
-                    return; 
-                }
-                sessionMsgs.count++;
-                localStorage.setItem('hms_session_msgs', JSON.stringify(sessionMsgs));
-            }
-
-            db.ref(`groups/${userGender}/${currentGroupId}/chat`).push({
-                senderId: currentUser.uid,
-                senderName: userName,
-                text: text,
-                timestamp: Date.now()
-            }).then(() => {
-                msgsLeft = Math.max(0, msgsLeft - 1);
-                localStorage.setItem('hms_chat_unlocked_msgs', msgsLeft);
-                renderChatInputArea();
-            });
-
-            input.value = '';
-        }
         
         // دالة التبديل بين الشات والمهام والأعضاء للموبايل
         function switchGroupTab(tab) {
@@ -6534,39 +6495,61 @@ window.addEventListener('appinstalled', () => {
             const chatContainer = document.getElementById('chat-messages-container');
             chatContainer.innerHTML = '<p class="text-[10px] text-slate-400 text-center py-2">مرحباً بك في الغرفة! الدردشة مباشرة.</p>';
 
+            // 1. الاستماع لإضافة رسائل جديدة
             db.ref(`groups/${userGender}/${currentGroupId}/chat`).limitToLast(50).on('child_added', (snapshot) => {
                 const msg = snapshot.val();
-                msg.text = msg.text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
                 if(!msg) return;
+                
+                // تنظيف النص من أكواد HTML لحماية الدردشة
+                msg.text = msg.text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
                 const timeStr = new Date(msg.timestamp).toLocaleTimeString('ar-EG', {hour: '2-digit', minute:'2-digit'});
                 const isMale = userGender === 'male';
+                let msgHtml = '';
 
                 if (msg.senderId === 'system') {
-                    chatContainer.innerHTML += `<div class="text-center text-[10px] text-slate-500 font-bold bg-slate-100 dark:bg-slate-800 w-max mx-auto px-3 py-1 rounded-full my-2">${msg.text}</div>`;
+                    msgHtml = `
+                        <div id="msg-${snapshot.key}" class="text-center text-[10px] text-slate-500 font-bold bg-slate-100 dark:bg-slate-800 w-max mx-auto px-3 py-1 rounded-full my-2">
+                            ${msg.text}
+                        </div>`;
                 } else if (msg.senderId === currentUser.uid) {
                     const myColor = isMale ? 'bg-blue-500' : 'bg-rose-500';
-                    chatContainer.innerHTML += `
-                        <div class="flex gap-2 items-end justify-end">
+                    msgHtml = `
+                        <div id="msg-${snapshot.key}" class="flex gap-2 items-end justify-end">
                             <span class="text-[8px] text-slate-400">${timeStr}</span>
                             <div class="${myColor} text-white p-2.5 rounded-2xl rounded-bl-sm shadow-sm max-w-[80%]">
                                 <p class="text-xs font-medium leading-relaxed">${msg.text}</p>
                             </div>
                         </div>`;
                 } else {
-                    playBeep("success");
                     const theirColor = isMale ? 'text-blue-500' : 'text-rose-500';
-                    chatContainer.innerHTML += `
-                        <div class="flex gap-2 items-end justify-start">
+                    msgHtml = `
+                        <div id="msg-${snapshot.key}" class="flex gap-2 items-end justify-start">
                             <div class="w-6 h-6 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center text-[10px] font-bold shrink-0">${msg.senderName.charAt(0)}</div>
                             <div class="bg-white dark:bg-slate-800 p-2.5 rounded-2xl rounded-br-sm shadow-sm border border-slate-100 dark:border-slate-700 max-w-[80%]">
                                 <p class="text-[9px] font-bold ${theirColor} mb-0.5">${msg.senderName}</p>
                                 <p class="text-xs text-slate-700 dark:text-slate-200 font-medium leading-relaxed">${msg.text}</p>
                             </div>
-                            <span class="text-[8px] text-slate-400">${timeStr}</span>
+                            <div class="flex flex-col gap-1 items-center justify-center shrink-0">
+                                <span class="text-[8px] text-slate-400">${timeStr}</span>
+                                <!-- زر الإبلاغ الصغير (يظهر لرسائل الآخرين فقط) -->
+                                <button onclick="reportMessage('${snapshot.key}')" class="text-slate-400 hover:text-rose-500 p-1 transition-colors" title="إبلاغ عن الرسالة">
+                                    <i class="fa-solid fa-flag text-[9px]"></i>
+                                </button>
+                            </div>
                         </div>`;
                 }
+                
+                chatContainer.insertAdjacentHTML('beforeend', msgHtml);
                 chatContainer.scrollTop = chatContainer.scrollHeight;
+            });
+
+            // 2. الاستماع الفوري لحذف الرسائل من السيرفر وتحديث شاشات الأعضاء تلقائياً
+            db.ref(`groups/${userGender}/${currentGroupId}/chat`).on('child_removed', (snapshot) => {
+                const removedMsgEl = document.getElementById(`msg-${snapshot.key}`);
+                if (removedMsgEl) {
+                    removedMsgEl.remove();
+                }
             });
         }
 
@@ -6999,6 +6982,37 @@ window.addEventListener('appinstalled', () => {
             });
 
             input.value = '';
+        }
+        // نظام الإبلاغ التلقائي عن الرسائل المخالفة
+        function reportMessage(msgId) {
+            if (!currentGroupId || !currentUser) return;
+
+            const msgRef = db.ref(`groups/${userGender}/${currentGroupId}/chat/${msgId}`);
+            const reportRef = msgRef.child(`reports/${currentUser.uid}`);
+
+            // تسجيل بلاغ المستخدم الحالي
+            reportRef.set(true).then(() => {
+                showToast("تم تسجيل الإبلاغ", "شكراً لك، سيتم فحص رسالة العضو تلقائياً.");
+
+                // جلب وفحص إجمالي البلاغات على هذه الرسالة محددة
+                msgRef.child('reports').once('value').then((snapshot) => {
+                    const reports = snapshot.val();
+                    if (reports && Object.keys(reports).length >= 3) {
+                        
+                        // 1. بث رسالة نظام تفيد بحذف الرسالة المخالفة ليرى الجميع أن المجتمع آمن ونظيف
+                        db.ref(`groups/${userGender}/${currentGroupId}/chat`).push({
+                            senderId: 'system',
+                            text: "🛡️ نظام الحماية: تم تلقائياً حذف رسالة مخالفة بعد إبلاغ 3 أعضاء عنها.",
+                            timestamp: Date.now()
+                        });
+
+                        // 2. حذف الرسالة المخالفة نهائياً من قاعدة البيانات
+                        msgRef.remove();
+                    }
+                });
+            }).catch(err => {
+                console.error("خطأ في نظام الإبلاغ:", err);
+            });
         }
         
         // تم دمج النظام، هذه الدالة للرجوع فقط لمنع الأخطاء
