@@ -6372,6 +6372,7 @@ window.addEventListener('appinstalled', () => {
                 db.ref(`groups/${userGender}/${groupId}/admins/${currentUser.uid}`).on('value', (adminSnap) => {
                     const isAdminInList = adminSnap.val() === true;
                     isGroupAdmin = isAdminInList || isCreator;
+                    toggleAdminDeleteButtonsVisibility();
                     
                     db.ref(`groups/${userGender}/${groupId}/timer`).once('value').then((timerSnap) => {
                         renderAdminControlsUI(timerSnap.exists(), timerSnap.exists() ? timerSnap.val().type : 'study');
@@ -6509,13 +6510,21 @@ window.addEventListener('appinstalled', () => {
 
                 if (msg.senderId === 'system') {
                     msgHtml = `
-                        <div id="msg-${snapshot.key}" class="text-center text-[10px] text-slate-500 font-bold bg-slate-100 dark:bg-slate-800 w-max mx-auto px-3 py-1 rounded-full my-2">
-                            ${msg.text}
+                        <div id="msg-${snapshot.key}" class="text-center text-[10px] text-slate-500 font-bold bg-slate-100 dark:bg-slate-800 w-max mx-auto px-3 py-1 rounded-full my-2 flex items-center gap-2 group">
+                            <span>${msg.text}</span>
+                            <!-- زر حذف رسالة النظام للمشرف -->
+                            <button onclick="adminDeleteMessage('${snapshot.key}')" class="admin-delete-btn hidden text-rose-500 hover:text-rose-700 p-0.5 transition-colors" title="حذف رسالة النظام">
+                                <i class="fa-solid fa-trash-can text-[10px]"></i>
+                            </button>
                         </div>`;
                 } else if (msg.senderId === currentUser.uid) {
                     const myColor = isMale ? 'bg-blue-500' : 'bg-rose-500';
                     msgHtml = `
-                        <div id="msg-${snapshot.key}" class="flex gap-2 items-end justify-end">
+                        <div id="msg-${snapshot.key}" class="flex gap-2 items-end justify-end group">
+                            <!-- زر حذف رسالتك الخاصة للمشرف -->
+                            <button onclick="adminDeleteMessage('${snapshot.key}')" class="admin-delete-btn hidden text-rose-500 hover:text-rose-700 p-1 transition-colors self-center" title="حذف الرسالة">
+                                <i class="fa-solid fa-trash-can text-[10px]"></i>
+                            </button>
                             <span class="text-[8px] text-slate-400">${timeStr}</span>
                             <div class="${myColor} text-white p-2.5 rounded-2xl rounded-bl-sm shadow-sm max-w-[80%]">
                                 <p class="text-xs font-medium leading-relaxed">${msg.text}</p>
@@ -6524,7 +6533,7 @@ window.addEventListener('appinstalled', () => {
                 } else {
                     const theirColor = isMale ? 'text-blue-500' : 'text-rose-500';
                     msgHtml = `
-                        <div id="msg-${snapshot.key}" class="flex gap-2 items-end justify-start">
+                        <div id="msg-${snapshot.key}" class="flex gap-2 items-end justify-start group">
                             <div class="w-6 h-6 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center text-[10px] font-bold shrink-0">${msg.senderName.charAt(0)}</div>
                             <div class="bg-white dark:bg-slate-800 p-2.5 rounded-2xl rounded-br-sm shadow-sm border border-slate-100 dark:border-slate-700 max-w-[80%]">
                                 <p class="text-[9px] font-bold ${theirColor} mb-0.5">${msg.senderName}</p>
@@ -6532,16 +6541,25 @@ window.addEventListener('appinstalled', () => {
                             </div>
                             <div class="flex flex-col gap-1 items-center justify-center shrink-0">
                                 <span class="text-[8px] text-slate-400">${timeStr}</span>
-                                <!-- زر الإبلاغ الصغير (يظهر لرسائل الآخرين فقط) -->
-                                <button onclick="reportMessage('${snapshot.key}')" class="text-slate-400 hover:text-rose-500 p-1 transition-colors" title="إبلاغ عن الرسالة">
-                                    <i class="fa-solid fa-flag text-[9px]"></i>
-                                </button>
+                                <div class="flex items-center gap-1">
+                                    <!-- زر الحذف الفوري للمشرف -->
+                                    <button onclick="adminDeleteMessage('${snapshot.key}')" class="admin-delete-btn hidden text-rose-500 hover:text-rose-700 p-1 transition-colors" title="حذف الرسالة كلياً للجميع">
+                                        <i class="fa-solid fa-trash-can text-[10px]"></i>
+                                    </button>
+                                    <!-- زر الإبلاغ الصغير للأعضاء -->
+                                    <button onclick="reportMessage('${snapshot.key}')" class="text-slate-400 hover:text-rose-500 p-1 transition-colors" title="إبلاغ عن الرسالة">
+                                        <i class="fa-solid fa-flag text-[9px]"></i>
+                                    </button>
+                                </div>
                             </div>
                         </div>`;
                 }
                 
                 chatContainer.insertAdjacentHTML('beforeend', msgHtml);
                 chatContainer.scrollTop = chatContainer.scrollHeight;
+                
+                // تحديث ظهور أزرار الحذف فور إضافة الرسالة بناءً على حالة المشرف الحالية
+                toggleAdminDeleteButtonsVisibility();
             });
 
             // 2. الاستماع الفوري لحذف الرسائل من السيرفر وتحديث شاشات الأعضاء تلقائياً
@@ -7013,6 +7031,32 @@ window.addEventListener('appinstalled', () => {
             }).catch(err => {
                 console.error("خطأ في نظام الإبلاغ:", err);
             });
+        }
+        // 1. دالة للتحقق من هوية المشرف وإظهار أزرار الحذف له بالوقت الفعلي
+        function toggleAdminDeleteButtonsVisibility() {
+            const btns = document.querySelectorAll('.admin-delete-btn');
+            btns.forEach(btn => {
+                if (isGroupAdmin) {
+                    btn.classList.remove('hidden');
+                    btn.classList.add('inline-flex');
+                } else {
+                    btn.classList.add('hidden');
+                    btn.classList.remove('inline-flex');
+                }
+            });
+        }
+
+        // 2. دالة الحذف الفوري والنهائي للرسالة من السيرفر بصلاحية المشرف
+        function adminDeleteMessage(msgId) {
+            if (!currentGroupId || !isGroupAdmin) return;
+            
+            if (confirm("🚨 هل تريد حذف هذه الرسالة نهائياً من الدردشة لجميع الأعضاء بصفتك مشرفاً؟")) {
+                db.ref(`groups/${userGender}/${currentGroupId}/chat/${msgId}`).remove().then(() => {
+                    showToast("تم الحذف بنجاح ✅", "تم إزالة الرسالة نهائياً من الغرفة.");
+                }).catch(err => {
+                    console.error("خطأ أثناء حذف الرسالة:", err);
+                });
+            }
         }
         
         // تم دمج النظام، هذه الدالة للرجوع فقط لمنع الأخطاء
