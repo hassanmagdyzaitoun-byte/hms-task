@@ -6851,7 +6851,10 @@ window.addEventListener('appinstalled', () => {
 
             const totalBankMsgs = parseInt(localStorage.getItem('hms_chat_unlocked_msgs') || '0');
             const sessionUsedMsgs = parseInt(localStorage.getItem('hms_session_msg_count') || '0');
-            const remainingFree = Math.max(0, 3 - sessionUsedMsgs);
+            
+            // تحديد ليميت الرسائل المجانية بناءً على نوع الفترة
+            const freeLimit = isBreakTime ? 7 : 3;
+            const remainingFree = Math.max(0, freeLimit - sessionUsedMsgs);
             
             // مسموح بالإرسال لو تبقى رسائل مجانية بالجلسة أو توفر رصيد بالبنك
             const canSend = (remainingFree > 0) || (totalBankMsgs > 0);
@@ -6881,26 +6884,11 @@ window.addEventListener('appinstalled', () => {
                 return;
             }
 
-            if (isBreakTime) {
-                // وقت الاستراحة مجاني تماماً وبدون أي عداد ليرتاح الجميع ويتحدثوا بحرية
-                chatContainer.innerHTML = `
-                    <div class="px-4 py-2 flex justify-between items-center bg-emerald-50 dark:bg-emerald-900/20 border-b border-emerald-200 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold">
-                        <span>☕ وقت الاستراحة! الدردشة مفتوحة ومجانية بالكامل للجميع الآن.</span>
-                    </div>
-                    ${emojisHtml}
-                    <div class="p-3 flex gap-2 items-center relative">
-                        <input type="text" id="chat-input-msg" onkeydown="if(event.key === 'Enter') sendGroupMessageDirectlyWithoutLimit()" placeholder="تحدث مع زملائك..." class="flex-1 bg-slate-50 dark:bg-slate-800 text-sm px-4 py-2.5 rounded-full outline-none border border-slate-200 dark:border-slate-700 focus:ring-1 focus:ring-emerald-500 text-slate-800 dark:text-white">
-                        <button type="button" onclick="sendGroupMessageDirectlyWithoutLimit()" class="w-10 h-10 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center transition-colors shadow-md shrink-0"><i class="fa-solid fa-paper-plane"></i></button>
-                    </div>
-                `;
-                tasksContainer.innerHTML = `<div class="bg-white dark:bg-slate-900 rounded-2xl border border-emerald-200 dark:border-emerald-800/50 p-4 shadow-sm text-center"><i class="fa-solid fa-mug-hot text-3xl text-emerald-400 mb-2 animate-bounce"></i><h4 class="font-bold text-sm text-emerald-600 dark:text-emerald-400">وقت الراحة!</h4></div>`;
-                return;
-            }
-
             if (canSend) {
-                // تحديد النص التعريفي بناءً على نوع الرصيد المستخدم حالياً
+                // تحديد النص التعريفي بناءً على ما إذا كان متبقٍ رسائل مجانية بالجلسة أو رصيد البنك
+                const sessionLabel = isBreakTime ? "استراحة ☕" : "تركيز ⏳";
                 const statusBannerText = remainingFree > 0 
-                    ? `🔓 متبقي لك: ${remainingFree} رسائل مجانية في هذه الجلسة`
+                    ? `🔓 متبقي لك: ${remainingFree} رسائل مجانية في هذه الـ (${sessionLabel})`
                     : `🏦 استهلكت المجاني! تسحب الآن من رصيد البنك الإضافي المتاح: ${totalBankMsgs} رسالة`;
 
                 chatContainer.innerHTML = `
@@ -6915,10 +6903,11 @@ window.addEventListener('appinstalled', () => {
                     </div>
                 `;
             } else {
+                const sessionLabel = isBreakTime ? "الاستراحة" : "التركيز";
                 chatContainer.innerHTML = `
                     ${emojisHtml}
                     <div class="p-3 text-center text-xs font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 flex flex-col gap-1 items-center justify-center">
-                        <span>🛑 استهلكت رسائلك المجانية للجلسة، وليس لديك رصيد في البنك.</span>
+                        <span>🛑 استهلكت رسائلك المجانية في ${sessionLabel}، وليس لديك رصيد في البنك.</span>
                         <span class="text-[10px] text-indigo-500">أنجز بعض المهام ليرتفع رصيدك البنكي وتتحدث مجدداً! 🚀</span>
                     </div>`;
             }
@@ -6940,34 +6929,38 @@ window.addEventListener('appinstalled', () => {
                 });
             }
 
-            tasksContainer.innerHTML = `
-                <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 shadow-sm flex flex-col gap-4">
-                    <!-- الهدف الجماعي -->
-                    <div id="collective-goal-ui" class="hidden mb-2 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 p-3 rounded-xl border border-amber-200 dark:border-amber-800/50">
-                        <div class="flex justify-between items-center mb-1">
-                            <span class="text-xs font-bold text-amber-700 dark:text-amber-400"><i class="fa-solid fa-trophy"></i> الهدف الجماعي</span>
-                            <span id="collective-goal-text" class="text-xs font-black text-amber-600 dark:text-amber-500">0/0</span>
+            if (isBreakTime) {
+                tasksContainer.innerHTML = `<div class="bg-white dark:bg-slate-900 rounded-2xl border border-emerald-200 dark:border-emerald-800/50 p-4 shadow-sm text-center"><i class="fa-solid fa-mug-hot text-3xl text-emerald-400 mb-2 animate-bounce"></i><h4 class="font-bold text-sm text-emerald-600 dark:text-emerald-400">وقت الراحة!</h4></div>`;
+            } else {
+                tasksContainer.innerHTML = `
+                    <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 shadow-sm flex flex-col gap-4">
+                        <!-- Goal UI -->
+                        <div id="collective-goal-ui" class="hidden mb-2 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 p-3 rounded-xl border border-amber-200 dark:border-amber-800/50">
+                            <div class="flex justify-between items-center mb-1">
+                                <span class="text-xs font-bold text-amber-700 dark:text-amber-400"><i class="fa-solid fa-trophy"></i> الهدف الجماعي</span>
+                                <span id="collective-goal-text" class="text-xs font-black text-amber-600 dark:text-amber-500">0/0</span>
+                            </div>
+                            <div class="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
+                                <div id="collective-goal-bar" class="bg-gradient-to-r from-amber-400 to-orange-500 h-full transition-all duration-500" style="width: 0%"></div>
+                            </div>
                         </div>
-                        <div class="w-full bg-slate-200 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
-                            <div id="collective-goal-bar" class="bg-gradient-to-r from-amber-400 to-orange-500 h-full transition-all duration-500" style="width: 0%"></div>
-                        </div>
-                    </div>
 
-                    <div class="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-slate-800">
-                        <h5 class="font-bold text-sm text-indigo-600 dark:text-indigo-400 flex items-center gap-2">
-                            <i class="fa-solid fa-list-check"></i> مهام الجلسة النشطة
-                        </h5>
-                        <span class="text-xs bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 px-2 py-1 rounded font-bold">${completedTasks}/${totalTasks}</span>
-                    </div>
-                    <div class="flex flex-col max-h-52 overflow-y-auto custom-scrollbar pr-1">${tasksHtml}</div>
-                    <div class="pt-2 border-t border-slate-100 dark:border-slate-800">
-                        <div class="flex gap-2">
-                            <input type="text" id="group-study-task-input" onkeydown="if(event.key === 'Enter') addGroupStudyTask()" placeholder="أضف مهمتك هنا..." class="flex-1 text-sm bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white rounded-xl px-4 py-3 outline-none border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500 shadow-inner">
-                            <button type="button" onclick="addGroupStudyTask()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-xl text-sm font-bold transition-all shadow-md shrink-0 active:scale-95"><i class="fa-solid fa-plus"></i></button>
+                        <div class="flex justify-between items-center pb-2 border-b border-slate-100 dark:border-slate-800">
+                            <h5 class="font-bold text-sm text-indigo-600 dark:text-indigo-400 flex items-center gap-2">
+                                <i class="fa-solid fa-list-check"></i> مهام الجلسة النشطة
+                            </h5>
+                            <span class="text-xs bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 px-2 py-1 rounded font-bold">${completedTasks}/${totalTasks}</span>
+                        </div>
+                        <div class="flex flex-col max-h-52 overflow-y-auto custom-scrollbar pr-1">${tasksHtml}</div>
+                        <div class="pt-2 border-t border-slate-100 dark:border-slate-800">
+                            <div class="flex gap-2">
+                                <input type="text" id="group-study-task-input" onkeydown="if(event.key === 'Enter') addGroupStudyTask()" placeholder="أضف مهمتك هنا..." class="flex-1 text-sm bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-white rounded-xl px-4 py-3 outline-none border border-slate-200 dark:border-slate-700 focus:ring-2 focus:ring-indigo-500 shadow-inner">
+                                <button type="button" onclick="addGroupStudyTask()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-xl text-sm font-bold transition-all shadow-md shrink-0 active:scale-95"><i class="fa-solid fa-plus"></i></button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            `;
+                `;
+            }
             
             fetchCollectiveGoal();
         }
@@ -6982,8 +6975,13 @@ window.addEventListener('appinstalled', () => {
             let totalBankMsgs = parseInt(localStorage.getItem('hms_chat_unlocked_msgs') || '0');
             let sessionUsedMsgs = parseInt(localStorage.getItem('hms_session_msg_count') || '0');
 
-            // 1. استخدام الـ 3 رسائل المجانية المخصصة للجلسة أولاً دون الخصم من البنك
-            if (sessionUsedMsgs < 3) {
+            // معرفة نوع الفترة الحالية لتحديد حد الرسائل المجانية تلقائياً (7 في الاستراحة و 3 في التركيز)
+            const liveTimerUI = document.getElementById('live-group-timer-ui');
+            const isBreakTime = liveTimerUI && liveTimerUI.innerText.includes('استراحة');
+            const freeLimit = isBreakTime ? 7 : 3;
+
+            // 1. إرسال مجاني إذا كان متبقي ضمن الحد المسموح للجلسة
+            if (sessionUsedMsgs < freeLimit) {
                 db.ref(`groups/${userGender}/${currentGroupId}/chat`).push({
                     senderId: currentUser.uid,
                     senderName: userName,
@@ -6994,7 +6992,7 @@ window.addEventListener('appinstalled', () => {
                     renderChatInputArea(); // تحديث شريط الإدخال والعداد
                 });
             } 
-            // 2. إذا انتهت الرسائل المجانية، يتم السحب من رصيد البنك الإضافي المكتسب من المهام
+            // 2. السحب من رصيد البنك الإضافي المكتسب من إتمام المهام
             else if (totalBankMsgs > 0) {
                 db.ref(`groups/${userGender}/${currentGroupId}/chat`).push({
                     senderId: currentUser.uid,
@@ -7002,15 +7000,15 @@ window.addEventListener('appinstalled', () => {
                     text: text,
                     timestamp: Date.now()
                 }).then(() => {
-                    // الخصم من البنك وزيادة عداد الجلسة الحالي
                     localStorage.setItem('hms_chat_unlocked_msgs', totalBankMsgs - 1);
                     localStorage.setItem('hms_session_msg_count', sessionUsedMsgs + 1);
                     renderChatInputArea(); // تحديث شريط الإدخال والعداد
                 });
             } 
-            // 3. إذا لم يمتلك رسائل مجانية في الجلسة الحالية ولا يمتلك رصيداً في البنك
+            // 3. انتهاء الرصيد بالكامل
             else {
-                showToast("انتهى الرصيد 🛑", "لقد استهلكت رسائلك المجانية للجلسة الحالية، وليس لديك رصيد إضافي بالبنك.");
+                const limitLabel = isBreakTime ? "7 رسائل مجانية للاستراحة" : "3 رسائل مجانية لجلسة التركيز";
+                showToast("انتهى الرصيد 🛑", `لقد استهلكت الـ ${limitLabel} المخصصة لك، وليس لديك رصيد إضافي بالبنك.`);
                 renderChatInputArea();
                 return;
             }
@@ -7075,23 +7073,6 @@ window.addEventListener('appinstalled', () => {
             }
         }
         
-        // تم دمج النظام، هذه الدالة للرجوع فقط لمنع الأخطاء
-        function sendGroupMessageDirectlyWithoutLimit() {
-            const input = document.getElementById('chat-input-msg');
-            if(!input) return;
-            const text = input.value.trim();
-            if (!text || !currentGroupId) return;
-
-            db.ref(`groups/${userGender}/${currentGroupId}/chat`).push({
-                senderId: currentUser.uid,
-                senderName: userName,
-                text: text,
-                timestamp: Date.now()
-            });
-
-            input.value = '';
-        }
-
         function addGroupStudyTask() {
             const input = document.getElementById('group-study-task-input');
             const text = input.value.trim();
