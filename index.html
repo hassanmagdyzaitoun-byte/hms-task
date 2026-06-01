@@ -969,6 +969,24 @@
                 <!-- الشاشة الأولى: قائمة المجموعات -->
                 <div id="groups-list-view" class="flex flex-col gap-6">
                     <div class="bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-2xl p-6 shadow-sm relative overflow-hidden shrink-0">
+                        <!-- كرت نقل واستعادة الهوية بالمجتمع -->
+                    <div class="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm flex flex-col sm:flex-row justify-between items-center gap-4 shrink-0">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-lg"><i class="fa-solid fa-id-card"></i></div>
+                            <div>
+                                <h4 class="text-[10px] font-bold text-slate-400">هويتك الحالية بالمجتمع</h4>
+                                <p id="group-profile-summary-text" class="text-sm font-bold text-slate-800 dark:text-white">جاري التحميل...</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 w-full sm:w-auto">
+                            <button onclick="copyGroupProfileCode()" class="flex-1 sm:flex-none bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-4 py-2.5 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 border border-slate-200 dark:border-slate-700" title="نسخ كود ملفك الشخصي لنقله لجهاز آخر">
+                                <i class="fa-solid fa-copy text-slate-400"></i> نسخ الهوية
+                            </button>
+                            <button onclick="restoreGroupProfileCode()" class="flex-1 sm:flex-none bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/20 dark:hover:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-4 py-2.5 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 border border-indigo-100 dark:border-indigo-900/30" title="استعادة ملفك الشخصي باستخدام كود منسوخ">
+                                <i class="fa-solid fa-file-import text-indigo-400"></i> استعادة الهوية
+                            </button>
+                        </div>
+                    </div>
                         <div class="absolute top-0 left-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -translate-x-10 -translate-y-10"></div>
                         <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative z-10">
                             <div>
@@ -6204,11 +6222,18 @@ window.addEventListener('appinstalled', () => {
             document.getElementById('profile-setup-modal').classList.add('flex');
         }
 
-        function updateSectionTitleUI() {
+       function updateSectionTitleUI() {
             const titleEl = document.querySelector('#groups-list-view h2');
             if (titleEl) {
                 const sectionName = userGender === 'male' ? 'قسم الشباب' : 'قسم البنات';
                 titleEl.innerHTML = `<i class="fa-solid fa-users-rays"></i> مجتمع المذاكرة (${sectionName})`;
+            }
+            
+            // 💡 الإضافة الجديدة: تحديث ملخص بيانات هويتك الحالية بالواجهة تلقائياً
+            const summaryEl = document.getElementById('group-profile-summary-text');
+            if (summaryEl) {
+                const genderName = userGender === 'male' ? 'شباب' : 'بنات';
+                summaryEl.innerText = `${userName || 'غير معروف'} (${genderName})`;
             }
         }
 
@@ -7070,6 +7095,74 @@ window.addEventListener('appinstalled', () => {
                 }).catch(err => {
                     console.error("خطأ أثناء حذف الرسالة:", err);
                 });
+            }
+        }
+        // 1. دالة لتشفير ونسخ بيانات الهوية ككود أمان مشفر
+        function copyGroupProfileCode() {
+            const name = localStorage.getItem('hms_user_name');
+            const gender = localStorage.getItem('hms_user_gender');
+            
+            if (!name || !gender) {
+                showToast("تنبيه ⚠️", "عفواً، لا يوجد ملف شخصي مسجل لنسخه حالياً.");
+                return;
+            }
+
+            const profileData = { name: name, gender: gender };
+            // تشفير البيانات بنظام base64 لتبدو ككود رخصة برمجية نظيف
+            const safeCode = btoa(encodeURIComponent(JSON.stringify(profileData)));
+
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(safeCode).then(() => {
+                    showToast("تم النسخ بنجاح ✅", "تم نسخ كود هويتك بنجاح، احفظه لتستعيده على جهازك الآخر.");
+                });
+            } else {
+                prompt("انسخ كود هويتك الفريد التالي لنقله للجهاز الآخر:", safeCode);
+            }
+        }
+
+        // 2. دالة لاستعادة الهوية كلياً ومزامنتها بالخلفية مع السيرفر
+        function restoreGroupProfileCode() {
+            const inputCode = prompt("يرجى لصق كود الهوية الذي قمت بنسخه من جهازك الآخر:");
+            if (!inputCode || inputCode.trim() === "") return;
+
+            try {
+                // فك تشفير الكود وقراءة البيانات
+                const decodedStr = decodeURIComponent(atob(inputCode.trim()));
+                const profileData = JSON.parse(decodedStr);
+
+                if (profileData.name && profileData.gender) {
+                    const genderName = profileData.gender === 'male' ? 'شباب' : 'بنات';
+                    
+                    if (confirm(`هل تريد استرجاع الهوية التالية؟\n\nالاسم: ${profileData.name}\nالقسم: ${genderName}`)) {
+                        
+                        // حفظ البيانات محلياً فوراً
+                        localStorage.setItem('hms_user_name', profileData.name);
+                        localStorage.setItem('hms_user_gender', profileData.gender);
+                        
+                        userName = profileData.name;
+                        userGender = profileData.gender;
+
+                        // مزامنة الحساب الجديد مع السيرفر
+                        if (currentUser) {
+                            db.ref(`users/${currentUser.uid}`).set({
+                                name: profileData.name,
+                                gender: profileData.gender,
+                                createdAt: firebase.database.ServerValue.TIMESTAMP
+                            }).then(() => {
+                                updateSectionTitleUI();
+                                loadPublicGroups();
+                                showToast("نجاح الاستعادة ✅", "تم ترحيل ومزامنة ملفك الشخصي بنجاح.");
+                            });
+                        } else {
+                            updateSectionTitleUI();
+                            showToast("نجاح الاستعادة ✅", "تم استيراد الملف محلياً.");
+                        }
+                    }
+                } else {
+                    alert("الكود المدخل غير صالح أو لا يحتوي على بيانات الهوية.");
+                }
+            } catch (e) {
+                alert("عفواً، الكود المدخل تالف أو غير صحيح. يرجى التأكد من نسخه كاملاً دون أي نقصان.");
             }
         }
         
