@@ -6198,41 +6198,42 @@ window.addEventListener('appinstalled', () => {
                             // تحديد اليوم لضمان رسم الواجهة بشكل صحيح
                             const todayStr = state.currentDate || new Date().toISOString().split('T')[0];
                             
-                            // 🛡️ حماية ذكية: معرفة هل المستخدم يكتب في الملاحظات حالياً لعدم مسح كلامه
-                            const notesInput = document.getElementById('daily-notes-input');
-                            const quranNotesInput = document.getElementById('quran-notes-input');
-                            const draftInput = document.getElementById('new-saved-note-input');
-                            
-                            const isTypingDaily = document.activeElement === notesInput;
-                            const isTypingQuran = document.activeElement === quranNotesInput;
-                            const isTypingDraft = document.activeElement === draftInput;
-                            
-                            // تحديث الشاشة فوراً لتعكس البيانات الجديدة
-                            renderAllTasksAndTables();
-                            renderStudyPath();
-                            renderTodoList();
-                            renderTilawaTab();
-                            renderSRTab();
-                            renderRetroTab();
-                            renderAthkarTab();
-                            renderSavedNotes();
-                            renderExamsTab();
-                            updateAllProgress();
-
-                            // تحديث النصوص فقط إذا لم يكن المستخدم مشغولاً بالكتابة فيها حالياً
-                            if (!isTypingDaily && notesInput && state.history[todayStr]) {
-                                notesInput.value = state.history[todayStr].notes || "";
-                            }
-                            if (!isTypingQuran && quranNotesInput && state.quran) {
-                                quranNotesInput.value = state.quran.notes || "";
-                            }
-                            // دالة renderQuranTab تعيد رسم القرآن بالكامل، نستدعيها بحذر
-                            renderQuranTab();
-
-                            // إظهار إشعار المزامنة لمرة واحدة فقط عند فتح التطبيق
+                            // 🛡️ الموقف الأول: إذا كانت هذه أول مرة نفتح فيها الجهاز الجديد، نقوم بتجهيز اليوم بالكامل بالقوة (فرش الأوراق)
                             if(!localStorage.getItem('hms_synced_once')) {
                                 localStorage.setItem('hms_synced_once', 'true');
+                                loadDateData(todayStr); // هذه الدالة تفرش المهام على الشاشة وتجهز الواجهة
                                 showToast("مزامنة سحابية ☁️", "تم جلب وتحديث جميع بياناتك (مهام، مسودات، قرآن) من السيرفر بنجاح.");
+                            } 
+                            // الموقف الثاني: نحن نعمل بالفعل والمزامنة تحدث في الخلفية، نحدث الشاشة بهدوء وتحديث صامت
+                            else {
+                                const notesInput = document.getElementById('daily-notes-input');
+                                const quranNotesInput = document.getElementById('quran-notes-input');
+                                const draftInput = document.getElementById('new-saved-note-input');
+                                
+                                const isTypingDaily = document.activeElement === notesInput;
+                                const isTypingQuran = document.activeElement === quranNotesInput;
+                                const isTypingDraft = document.activeElement === draftInput;
+                                
+                                // تحديث الشاشة فوراً لتعكس البيانات الجديدة
+                                renderAllTasksAndTables();
+                                renderStudyPath();
+                                renderTodoList();
+                                renderTilawaTab();
+                                renderSRTab();
+                                renderRetroTab();
+                                renderAthkarTab();
+                                renderSavedNotes();
+                                renderExamsTab();
+                                updateAllProgress();
+
+                                // تحديث الملاحظات والمسودات فقط إذا لم يكن المستخدم مشغولاً بالكتابة فيها حالياً
+                                if (!isTypingDaily && notesInput && state.history[todayStr]) {
+                                    notesInput.value = state.history[todayStr].notes || "";
+                                }
+                                if (!isTypingQuran && quranNotesInput && state.quran) {
+                                    quranNotesInput.value = state.quran.notes || "";
+                                }
+                                renderQuranTab();
                             }
                         }
                     });
@@ -6270,29 +6271,29 @@ window.addEventListener('appinstalled', () => {
             }
         }
 
-        // دالة ترقية حساب الزائر وربطه بجوجل للحفاظ على بياناته
+        // دالة الدخول الذكية (تربط الحساب إن كان جديداً، أو تفتح الحساب القديم إن كنت على جهاز آخر)
         async function linkAccountWithGoogle() {
             const provider = new firebase.auth.GoogleAuthProvider();
             try {
                 showToast("جاري الاتصال...", "يرجى الانتظار لتأمين حسابك.");
                 if (currentUser && currentUser.isAnonymous) {
-                    // ربط حساب الزائر الحالي بحساب جوجل (الاحتفاظ بالبيانات)
+                    // محاولة ربط حساب الزائر الحالي بحساب جوجل
                     await currentUser.linkWithPopup(provider);
-                    localStorage.removeItem('hms_synced_once'); // السماح بالمزامنة
-                    saveState(); // رفع البيانات الحالية للسيرفر فوراً لتأمينها
-                    showToast("تم التأمين بنجاح! 🛡️", "تم ربط حسابك بجوجل. بياناتك ومهامك الآن آمنة ولن تضيع.");
+                    localStorage.removeItem('hms_synced_once'); 
+                    saveState(); // رفع بيانات الهاتف الأول للسيرفر
+                    showToast("تم التأمين بنجاح! 🛡️", "تم ربط حسابك بجوجل. بياناتك ومهامك الآن آمنة.");
                 } else {
-                    // تسجيل دخول عادي
                     await auth.signInWithPopup(provider);
                 }
             } catch (error) {
-                console.error(error);
                 if (error.code === 'auth/credential-already-in-use') {
-                    // هذا الإيميل مستخدم مسبقاً، سنسجل دخوله مباشرة
-                    auth.signInWithCredential(error.credential).then(() => {
+                    // 💡 تم كشف حساب قديم! (أنت تستخدم جهازاً آخر)
+                    // نقوم بتسجيل الدخول مباشرة لاسترجاع البيانات وإهمال الحساب الفارغ
+                    auth.signInWithPopup(provider).then(() => {
                         localStorage.removeItem('hms_synced_once');
-                        showToast("مرحباً بعودتك! 👋", "تم تسجيل الدخول بحسابك القديم. جاري جلب ملفاتك...");
-                    });
+                        showToast("مرحباً بعودتك! 👋", "جاري تحميل بياناتك من السيرفر...");
+                        setTimeout(() => location.reload(), 1500); // تحديث الصفحة لفرش البيانات
+                    }).catch(e => showToast("خطأ", "تعذر تسجيل الدخول."));
                 } else {
                     showToast("إلغاء", "تم إلغاء عملية تسجيل الدخول أو حدث خطأ بالاتصال.");
                 }
