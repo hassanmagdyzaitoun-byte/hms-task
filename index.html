@@ -6011,20 +6011,22 @@
                 }
             }, 3000);
         };
-        // --- تحديث التطبيق تلقائياً إذا دخلنا في يوم جديد ---
+        // --- تحديث التطبيق والمزامنة التلقائية ---
         document.addEventListener("visibilitychange", function() {
-            // يتحقق هذا الكود كلما رجع المستخدم للتطبيق من الخلفية
-            if (document.visibilityState === 'visible') {
+            if (document.visibilityState === 'hidden') {
+                // 🛡️ بمجرد تصغير التطبيق أو الخروج منه، نقوم بحفظ كل المسودات والمهام إجبارياً ورفعها للسيرفر
+                saveState();
+            } else if (document.visibilityState === 'visible') {
+                // يتحقق هذا الكود كلما رجع المستخدم للتطبيق ليرى إن كان اليوم قد تغير
                 let checkDate = new Date();
                 const yyyy = checkDate.getFullYear();
                 const mm = String(checkDate.getMonth() + 1).padStart(2, '0');
                 const dd = String(checkDate.getDate()).padStart(2, '0');
                 const realTodayStr = `${yyyy}-${mm}-${dd}`;
                 
-                // إذا كان التاريخ المسجل في الشاشة يختلف عن تاريخ اليوم الفعلي
+                // إذا كان التاريخ المسجل يختلف عن تاريخ اليوم الفعلي
                 if (state.currentDate && state.currentDate !== realTodayStr) {
-                    // عمل Refresh للصفحة لبدء يوم جديد نظيف
-                    location.reload(); 
+                    location.reload(); // عمل Refresh للصفحة لبدء يوم جديد نظيف
                 }
             }
         });
@@ -6149,17 +6151,16 @@ window.addEventListener('appinstalled', () => {
         let isGroupLocked = false; // لمراقبة حالة إغلاق المجموعة
         let activeRoomFocusSeconds = 0; // عداد داخلي بالثواني الحقيقية لحساب وقت المذاكرة الفعلي دون الاعتماد على ساعة الهاتف
         
-        // مراقبة حالة الحساب وتحميل بيانات التطبيق من السيرفر
+        // مراقبة حالة الحساب وتحميل بيانات التطبيق من السيرفر بشكل "لحظي" (Real-time)
         auth.onAuthStateChanged((user) => {
             if (user) {
                 currentUser = user;
                 updateAuthUI(user);
                 
+                // 1. جلب بيانات الحساب الأساسية (الاسم والقسم)
                 db.ref(`users/${currentUser.uid}`).once('value').then((snapshot) => {
                     if (snapshot.exists()) {
                         const userData = snapshot.val();
-                        
-                        // تهيئة بيانات دردشة المجموعات
                         userName = userData.name || 'مستخدم';
                         userGender = userData.gender || 'male';
                         localStorage.setItem('hms_user_name', userName);
@@ -6167,22 +6168,76 @@ window.addEventListener('appinstalled', () => {
                         updateSectionTitleUI();
                         loadPublicGroups();
                         checkUrlForInvite();
-
-                        // ☁️ السحر هنا: تنزيل ملفات التطبيق (المهام والقرآن) من السحابة إذا كنت تستخدم هاتفاً جديداً
-                        if (userData.appData && !user.isAnonymous) {
-                            localforage.setItem('achievement_planner_state_v4', userData.appData).then(() => {
-                                // إعادة تحميل الواجهة بعد جلب البيانات السحابية لمرة واحدة عند الدخول
-                                if(!localStorage.getItem('hms_synced_once')) {
-                                    localStorage.setItem('hms_synced_once', 'true');
-                                    showToast("مزامنة سحابية ☁️", "تم استرجاع جميع بياناتك ومهامك بنجاح من السيرفر.");
-                                    setTimeout(() => location.reload(), 2000);
-                                }
-                            });
-                        }
                     }
-                }).catch(err => console.error("Error fetching user:", err));
+                });
+
+                // ☁️ 2. السحر الحقيقي: استماع "لحظي" لكل تغييرات بياناتك على السيرفر!
+                if (!user.isAnonymous) {
+                    db.ref(`users/${currentUser.uid}/appData`).on('value', (snapshot) => {
+                        if (snapshot.exists()) {
+                            const cloudData = snapshot.val();
+                            
+                            // حقن البيانات السحابية في المتغيرات المحلية
+                            if (cloudData.history) state.history = cloudData.history;
+                            if (cloudData.courses) state.courses = cloudData.courses;
+                            if (cloudData.customCourses) state.customCourses = cloudData.customCourses; 
+                            if (cloudData.customEnglishCourses) state.customEnglishCourses = cloudData.customEnglishCourses;
+                            if (cloudData.quran) state.quran = cloudData.quran; 
+                            if (cloudData.tilawa) state.tilawa = cloudData.tilawa;
+                            if (cloudData.spacedRepetition) state.spacedRepetition = cloudData.spacedRepetition;
+                            if (cloudData.retroTimetable) state.retroTimetable = cloudData.retroTimetable;
+                            if (cloudData.retroTables) state.retroTables = cloudData.retroTables;
+                            if (cloudData.savedNotes) state.savedNotes = cloudData.savedNotes;
+                            if (cloudData.examScores) state.examScores = cloudData.examScores;
+                            if (cloudData.gamification) state.gamification = cloudData.gamification;
+                            if (cloudData.rewards) state.rewards = cloudData.rewards;
+
+                            // حفظ نسخة احتياطية محلية
+                            localforage.setItem('achievement_planner_state_v4', cloudData);
+
+                            // تحديد اليوم لضمان رسم الواجهة بشكل صحيح
+                            const todayStr = state.currentDate || new Date().toISOString().split('T')[0];
+                            
+                            // 🛡️ حماية ذكية: معرفة هل المستخدم يكتب في الملاحظات حالياً لعدم مسح كلامه
+                            const notesInput = document.getElementById('daily-notes-input');
+                            const quranNotesInput = document.getElementById('quran-notes-input');
+                            const draftInput = document.getElementById('new-saved-note-input');
+                            
+                            const isTypingDaily = document.activeElement === notesInput;
+                            const isTypingQuran = document.activeElement === quranNotesInput;
+                            const isTypingDraft = document.activeElement === draftInput;
+                            
+                            // تحديث الشاشة فوراً لتعكس البيانات الجديدة
+                            renderAllTasksAndTables();
+                            renderStudyPath();
+                            renderTodoList();
+                            renderTilawaTab();
+                            renderSRTab();
+                            renderRetroTab();
+                            renderAthkarTab();
+                            renderSavedNotes();
+                            renderExamsTab();
+                            updateAllProgress();
+
+                            // تحديث النصوص فقط إذا لم يكن المستخدم مشغولاً بالكتابة فيها حالياً
+                            if (!isTypingDaily && notesInput && state.history[todayStr]) {
+                                notesInput.value = state.history[todayStr].notes || "";
+                            }
+                            if (!isTypingQuran && quranNotesInput && state.quran) {
+                                quranNotesInput.value = state.quran.notes || "";
+                            }
+                            // دالة renderQuranTab تعيد رسم القرآن بالكامل، نستدعيها بحذر
+                            renderQuranTab();
+
+                            // إظهار إشعار المزامنة لمرة واحدة فقط عند فتح التطبيق
+                            if(!localStorage.getItem('hms_synced_once')) {
+                                localStorage.setItem('hms_synced_once', 'true');
+                                showToast("مزامنة سحابية ☁️", "تم جلب وتحديث جميع بياناتك (مهام، مسودات، قرآن) من السيرفر بنجاح.");
+                            }
+                        }
+                    });
+                }
             } else {
-                // إذا لم يكن مسجلاً بأي طريقة (جديد تماماً)، قم بتسجيله كزائر مبدئياً
                 auth.signInAnonymously().catch((error) => console.error("Auth Error:", error));
             }
         });
