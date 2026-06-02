@@ -6191,13 +6191,12 @@ window.addEventListener('appinstalled', () => {
                     }
                 }).catch(err => console.error("Error fetching user:", err));
 
-                // ☁️ المزامنة السحابية الذكية والشاملة لجميع مسارات التطبيق
+                // ☁️ 2. السحر الحقيقي: استماع "لحظي" لكل تغييرات بياناتك على السيرفر!
                 if (!user.isAnonymous) {
                     db.ref(`users/${currentUser.uid}/appData`).on('value', (snapshot) => {
                         const todayStr = state.currentDate || new Date().toISOString().split('T')[0];
 
                         if (snapshot.exists()) {
-                            // الحساب قديم ولديه بيانات سحابية مخزنة، نقوم بتنزيلها فوراً
                             const cloudData = snapshot.val();
                             
                             // حقن البيانات السحابية في المتغيرات المحلية لفرشها
@@ -6215,41 +6214,46 @@ window.addEventListener('appinstalled', () => {
                             if (cloudData.gamification) state.gamification = cloudData.gamification;
                             if (cloudData.rewards) state.rewards = cloudData.rewards;
 
+                            // حفظ نسخة احتياطية محلية
                             localforage.setItem('achievement_planner_state_v4', cloudData);
 
-                            // تفعيل الفرش لمرة واحدة فقط لمنع قفز المؤشرات والـ Cursor
+                            // 🛡️ التحديث الذهبي: استدعاء دالة بناء اليوم النشط دائماً عند استقبال البيانات السحابية
+                            // لتحديث المتغيرات النشطة (state.tasks) وضمان ظهور مهامك القديمة فوراً
+                            loadDateData(todayStr);
+
+                            // حماية النصوص من القفز والمسح أثناء الكتابة والمزامنة
+                            const notesInput = document.getElementById('daily-notes-input');
+                            const quranNotesInput = document.getElementById('quran-notes-input');
+                            const draftInput = document.getElementById('new-saved-note-input');
+                            
+                            const isTypingDaily = document.activeElement === notesInput;
+                            const isTypingQuran = document.activeElement === quranNotesInput;
+                            const isTypingDraft = document.activeElement === draftInput;
+                            
+                            // إعادة رسم الواجهات بناءً على المتغيرات الجديدة
+                            renderAllTasksAndTables();
+                            renderStudyPath();
+                            renderTodoList();
+                            renderTilawaTab();
+                            renderSRTab();
+                            renderRetroTab();
+                            renderAthkarTab();
+                            renderSavedNotes();
+                            renderExamsTab();
+                            updateAllProgress();
+
+                            if (!isTypingDaily && notesInput && state.history[todayStr]) {
+                                notesInput.value = state.history[todayStr].notes || "";
+                            }
+                            if (!isTypingQuran && quranNotesInput && state.quran) {
+                                quranNotesInput.value = state.quran.notes || "";
+                            }
+                            renderQuranTab();
+
+                            // إظهار ترحيب المزامنة السحابية لمرة واحدة فقط
                             if(!localStorage.getItem('hms_synced_once')) {
                                 localStorage.setItem('hms_synced_once', 'true');
-                                loadDateData(todayStr);
                                 showToast("مزامنة سحابية ☁️", "تم استرجاع جميع مهامك وإنجازاتك من السيرفر بنجاح.");
-                            } else {
-                                // تحديث صامت وهادئ في الخلفية لتجنب تداخل المدخلات
-                                const notesInput = document.getElementById('daily-notes-input');
-                                const quranNotesInput = document.getElementById('quran-notes-input');
-                                const draftInput = document.getElementById('new-saved-note-input');
-                                
-                                const isTypingDaily = document.activeElement === notesInput;
-                                const isTypingQuran = document.activeElement === quranNotesInput;
-                                const isTypingDraft = document.activeElement === draftInput;
-                                
-                                renderAllTasksAndTables();
-                                renderStudyPath();
-                                renderTodoList();
-                                renderTilawaTab();
-                                renderSRTab();
-                                renderRetroTab();
-                                renderAthkarTab();
-                                renderSavedNotes();
-                                renderExamsTab();
-                                updateAllProgress();
-
-                                if (!isTypingDaily && notesInput && state.history[todayStr]) {
-                                    notesInput.value = state.history[todayStr].notes || "";
-                                }
-                                if (!isTypingQuran && quranNotesInput && state.quran) {
-                                    quranNotesInput.value = state.quran.notes || "";
-                                }
-                                renderQuranTab();
                             }
                         } else {
                             // حساب جديد كلياً وليس لديه بيانات على السيرفر، نقوم برفع بياناته المحلية الحالية لتأمينها سحابياً
