@@ -6168,6 +6168,30 @@ window.addEventListener('appinstalled', () => {
                         updateSectionTitleUI();
                         loadPublicGroups();
                         checkUrlForInvite();
+                    } else {
+                        // 🛡️ حماية الإصدار الجديد: لو لم يجد حسابك بالسيرفر ولكنه موجود بالمتصفح محلياً، يرفعه للسيرفر فوراً
+                        const localName = localStorage.getItem('hms_user_name');
+                        const localGender = localStorage.getItem('hms_user_gender');
+                        
+                        if (localName && localGender) {
+                            userName = localName;
+                            userGender = localGender;
+                            
+                            db.ref(`users/${currentUser.uid}`).set({
+                                name: localName,
+                                gender: localGender,
+                                createdAt: firebase.database.ServerValue.TIMESTAMP
+                            }).then(() => {
+                                updateSectionTitleUI();
+                                loadPublicGroups();
+                                checkUrlForInvite();
+                            });
+                        } else {
+                            // مستخدم جديد كلياً لم يسجل اسمه بعد
+                            userName = '';
+                            userGender = '';
+                            updateSectionTitleUI();
+                        }
                     }
                 });
 
@@ -6195,9 +6219,8 @@ window.addEventListener('appinstalled', () => {
                             // حفظ نسخة احتياطية محلية
                             localforage.setItem('achievement_planner_state_v4', cloudData);
 
-                            // تحديد اليوم لضمان رسم الواجهة بشكل صحيح
                             const todayStr = state.currentDate || new Date().toISOString().split('T')[0];
-                            
+
                             // 🛡️ الموقف الأول: إذا كانت هذه أول مرة نفتح فيها الجهاز الجديد، نقوم بتجهيز اليوم بالكامل بالقوة (فرش الأوراق)
                             if(!localStorage.getItem('hms_synced_once')) {
                                 localStorage.setItem('hms_synced_once', 'true');
@@ -6226,7 +6249,6 @@ window.addEventListener('appinstalled', () => {
                                 renderExamsTab();
                                 updateAllProgress();
 
-                                // تحديث الملاحظات والمسودات فقط إذا لم يكن المستخدم مشغولاً بالكتابة فيها حالياً
                                 if (!isTypingDaily && notesInput && state.history[todayStr]) {
                                     notesInput.value = state.history[todayStr].notes || "";
                                 }
