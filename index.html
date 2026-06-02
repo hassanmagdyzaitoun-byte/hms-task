@@ -6011,22 +6011,20 @@
                 }
             }, 3000);
         };
-        // --- تحديث التطبيق والمزامنة التلقائية ---
+        // --- تحديث التطبيق تلقائياً إذا دخلنا في يوم جديد ---
         document.addEventListener("visibilitychange", function() {
-            if (document.visibilityState === 'hidden') {
-                // 🛡️ بمجرد تصغير التطبيق أو الخروج منه، نقوم بحفظ كل المسودات والمهام إجبارياً ورفعها للسيرفر
-                saveState();
-            } else if (document.visibilityState === 'visible') {
-                // يتحقق هذا الكود كلما رجع المستخدم للتطبيق ليرى إن كان اليوم قد تغير
+            // يتحقق هذا الكود كلما رجع المستخدم للتطبيق من الخلفية
+            if (document.visibilityState === 'visible') {
                 let checkDate = new Date();
                 const yyyy = checkDate.getFullYear();
                 const mm = String(checkDate.getMonth() + 1).padStart(2, '0');
                 const dd = String(checkDate.getDate()).padStart(2, '0');
                 const realTodayStr = `${yyyy}-${mm}-${dd}`;
                 
-                // إذا كان التاريخ المسجل يختلف عن تاريخ اليوم الفعلي
+                // إذا كان التاريخ المسجل في الشاشة يختلف عن تاريخ اليوم الفعلي
                 if (state.currentDate && state.currentDate !== realTodayStr) {
-                    location.reload(); // عمل Refresh للصفحة لبدء يوم جديد نظيف
+                    // عمل Refresh للصفحة لبدء يوم جديد نظيف
+                    location.reload(); 
                 }
             }
         });
@@ -6316,22 +6314,6 @@ window.addEventListener('appinstalled', () => {
                     localforage.removeItem('achievement_planner_state_v4');
                     localStorage.clear();
                     showToast("تم الخروج", "جاري إعادة تهيئة التطبيق...");
-                    setTimeout(() => location.reload(), 1500);
-                });
-            }
-        }
-
-        // تسجيل الخروج
-        function signOutUser() {
-            if(confirm("هل أنت متأكد من تسجيل الخروج؟\nستتمكن من استعادة مهامك حين تسجل دخولك مرة أخرى.")) {
-                auth.signOut().then(() => {
-                    // تفريغ البيانات المحلية حتى لا تتداخل مع الحساب الجديد
-                    localforage.removeItem('achievement_planner_state_v4');
-                    localStorage.removeItem('achievement_planner_state_v4');
-                    localStorage.removeItem('hms_user_name');
-                    localStorage.removeItem('hms_user_gender');
-                    
-                    showToast("تم الخروج", "جاري إعادة تهيئة التطبيق كزائر...");
                     setTimeout(() => location.reload(), 1500);
                 });
             }
