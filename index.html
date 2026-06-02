@@ -236,7 +236,30 @@
                     <i class="fa-solid fa-xmark"></i>
                 </button>
             </div>
+<!-- 🌟 صندوق الحساب الرئيسي والمزامنة السحابية -->
+            <div class="bg-gradient-to-br from-slate-800 to-night-900 rounded-2xl p-4 shadow-lg text-white shrink-0 relative overflow-hidden mb-4">
+                <div class="absolute top-0 right-0 w-24 h-24 bg-blue-500/20 rounded-full blur-2xl"></div>
+                
+                <div class="flex items-center gap-3 mb-3 relative z-10">
+                    <div class="w-12 h-12 rounded-full bg-slate-700 flex items-center justify-center text-xl border-2 border-slate-600">
+                        <i id="global-profile-icon" class="fa-solid fa-user-secret text-amber-400"></i>
+                    </div>
+                    <div>
+                        <h3 id="global-profile-name" class="font-bold text-sm">مستخدم زائر</h3>
+                        <p id="global-profile-status" class="text-[10px] text-amber-400">بياناتك معرضة للضياع</p>
+                    </div>
+                </div>
 
+                <div id="auth-buttons-container" class="flex flex-col gap-2 relative z-10">
+                    <button onclick="linkAccountWithGoogle()" class="w-full bg-white text-slate-900 hover:bg-slate-100 py-2 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-2 shadow-sm">
+                        <i class="fa-brands fa-google text-red-500 text-sm"></i> تأمين ومزامنة بـ Google
+                    </button>
+                </div>
+
+                <button id="logout-btn" onclick="signOutUser()" class="hidden w-full bg-rose-500 hover:bg-rose-600 text-white py-2 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-2 shadow-sm relative z-10">
+                    <i class="fa-solid fa-right-from-bracket"></i> تسجيل الخروج
+                </button>
+            </div>
             <!-- Daily Quote Box -->
             <div class="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 border border-amber-200 dark:border-amber-800/50 rounded-2xl p-4 shadow-sm flex items-start gap-3 shrink-0">
                 <i class="fa-solid fa-quote-right text-amber-500 text-xl opacity-50"></i>
@@ -2595,7 +2618,8 @@
 
         function saveState() {
             saveCurrentDayToHistory();
-            localforage.setItem('achievement_planner_state_v4', {
+            
+            const stateToSave = {
                 history: state.history,
                 courses: state.courses,
                 customCourses: state.customCourses,
@@ -2609,9 +2633,18 @@
                 examScores: state.examScores,
                 gamification: state.gamification,
                 rewards: state.rewards
-            }).catch(function(err) {
-                console.error("خطأ في حفظ البيانات:", err);
+            };
+
+            // 1. الحفظ المحلي (أوفلاين)
+            localforage.setItem('achievement_planner_state_v4', stateToSave).catch(function(err) {
+                console.error("خطأ في حفظ البيانات محلياً:", err);
             });
+            
+            // 2. المزامنة السحابية (إذا كان المستخدم سجل دخوله بحساب جوجل الحقيقي)
+            if (currentUser && !currentUser.isAnonymous) {
+                db.ref(`users/${currentUser.uid}/appData`).set(stateToSave).catch(e => console.log("خطأ في المزامنة السحابية"));
+            }
+
             if(!document.getElementById('tab-calendar').classList.contains('hidden')) renderCalendarAndStats();
         }
         function renderQuranTab() {
@@ -6116,62 +6149,116 @@ window.addEventListener('appinstalled', () => {
         let isGroupLocked = false; // لمراقبة حالة إغلاق المجموعة
         let activeRoomFocusSeconds = 0; // عداد داخلي بالثواني الحقيقية لحساب وقت المذاكرة الفعلي دون الاعتماد على ساعة الهاتف
         
-        auth.signInAnonymously().catch((error) => console.error("Auth Error:", error));
-
+        // مراقبة حالة الحساب وتحميل بيانات التطبيق من السيرفر
         auth.onAuthStateChanged((user) => {
             if (user) {
                 currentUser = user;
+                updateAuthUI(user);
                 
-                // جلب بيانات المستخدم من السيرفر أولاً للتأكد من مطابقة الـ UID بقواعد الأمان
                 db.ref(`users/${currentUser.uid}`).once('value').then((snapshot) => {
                     if (snapshot.exists()) {
-                        // الحالة 1: المستخدم مسجل في السيرفر ومطابق لقواعد الأمان
                         const userData = snapshot.val();
-                        userName = userData.name;
-                        userGender = userData.gender;
                         
+                        // تهيئة بيانات دردشة المجموعات
+                        userName = userData.name || 'مستخدم';
+                        userGender = userData.gender || 'male';
                         localStorage.setItem('hms_user_name', userName);
                         localStorage.setItem('hms_user_gender', userGender);
-                        
                         updateSectionTitleUI();
                         loadPublicGroups();
                         checkUrlForInvite();
-                    } else {
-                        // الحالة 2: الـ UID تجدد على الهاتف والسيرفر لا يعرفه ولكن الذاكرة المحلية تحتفظ بالبيانات
-                        const localName = localStorage.getItem('hms_user_name');
-                        const localGender = localStorage.getItem('hms_user_gender');
-                        
-                        if (localName && localGender) {
-                            // مزامنة وإعادة تسجيل الحساب الجديد في السيرفر تلقائياً لتخطي جدار الرولز الأمني
-                            userName = localName;
-                            userGender = localGender;
-                            
-                            db.ref(`users/${currentUser.uid}`).set({
-                                name: userName,
-                                gender: userGender,
-                                createdAt: firebase.database.ServerValue.TIMESTAMP
-                            }).then(() => {
-                                updateSectionTitleUI();
-                                loadPublicGroups();
-                                checkUrlForInvite();
+
+                        // ☁️ السحر هنا: تنزيل ملفات التطبيق (المهام والقرآن) من السحابة إذا كنت تستخدم هاتفاً جديداً
+                        if (userData.appData && !user.isAnonymous) {
+                            localforage.setItem('achievement_planner_state_v4', userData.appData).then(() => {
+                                // إعادة تحميل الواجهة بعد جلب البيانات السحابية لمرة واحدة عند الدخول
+                                if(!localStorage.getItem('hms_synced_once')) {
+                                    localStorage.setItem('hms_synced_once', 'true');
+                                    showToast("مزامنة سحابية ☁️", "تم استرجاع جميع بياناتك ومهامك بنجاح من السيرفر.");
+                                    setTimeout(() => location.reload(), 2000);
+                                }
                             });
-                        } else {
-                            // الحالة 3: مستخدم جديد كلياً، ننتظر ضغطه على التبويب ليفتح نافذة التسجيل
                         }
                     }
-                }).catch(err => {
-                    console.error("خطأ مزامنة الحساب المجهول:", err);
-                    // في حال انقطاع الإنترنت التام، نعتمد على البيانات المحلية مؤقتاً لفتح الواجهة
-                    const localName = localStorage.getItem('hms_user_name');
-                    const localGender = localStorage.getItem('hms_user_gender');
-                    if (localName && localGender) {
-                        userName = localName;
-                        userGender = localGender;
-                        updateSectionTitleUI();
-                    }
-                });
+                }).catch(err => console.error("Error fetching user:", err));
+            } else {
+                // إذا لم يكن مسجلاً بأي طريقة (جديد تماماً)، قم بتسجيله كزائر مبدئياً
+                auth.signInAnonymously().catch((error) => console.error("Auth Error:", error));
             }
         });
+
+        // دالة تحديث واجهة الحساب في القائمة الجانبية بناءً على حالة الدخول
+        function updateAuthUI(user) {
+            const nameEl = document.getElementById('global-profile-name');
+            const statusEl = document.getElementById('global-profile-status');
+            const iconEl = document.getElementById('global-profile-icon');
+            const btnsContainer = document.getElementById('auth-buttons-container');
+            const logoutBtn = document.getElementById('logout-btn');
+
+            if (!nameEl) return;
+
+            if (user.isAnonymous) {
+                nameEl.innerText = localStorage.getItem('hms_user_name') || "مستخدم زائر";
+                statusEl.innerText = "بياناتك معرضة للضياع";
+                statusEl.className = "text-[10px] text-amber-400";
+                iconEl.className = "fa-solid fa-user-secret text-amber-400";
+                btnsContainer.classList.remove('hidden');
+                logoutBtn.classList.add('hidden');
+            } else {
+                // المستخدم سجل دخول حقيقي عبر جوجل
+                nameEl.innerText = user.displayName || localStorage.getItem('hms_user_name') || "مستخدم مسجل";
+                statusEl.innerText = "حسابك مأمن سحابياً ☁️";
+                statusEl.className = "text-[10px] text-emerald-400 font-bold";
+                iconEl.className = "fa-solid fa-shield-check text-emerald-400";
+                btnsContainer.classList.add('hidden');
+                logoutBtn.classList.remove('hidden');
+            }
+        }
+
+        // دالة ترقية حساب الزائر وربطه بجوجل للحفاظ على بياناته
+        async function linkAccountWithGoogle() {
+            const provider = new firebase.auth.GoogleAuthProvider();
+            try {
+                showToast("جاري الاتصال...", "يرجى الانتظار لتأمين حسابك.");
+                if (currentUser && currentUser.isAnonymous) {
+                    // ربط حساب الزائر الحالي بحساب جوجل (الاحتفاظ بالبيانات)
+                    await currentUser.linkWithPopup(provider);
+                    localStorage.removeItem('hms_synced_once'); // السماح بالمزامنة
+                    saveState(); // رفع البيانات الحالية للسيرفر فوراً لتأمينها
+                    showToast("تم التأمين بنجاح! 🛡️", "تم ربط حسابك بجوجل. بياناتك ومهامك الآن آمنة ولن تضيع.");
+                } else {
+                    // تسجيل دخول عادي
+                    await auth.signInWithPopup(provider);
+                }
+            } catch (error) {
+                console.error(error);
+                if (error.code === 'auth/credential-already-in-use') {
+                    // هذا الإيميل مستخدم مسبقاً، سنسجل دخوله مباشرة
+                    auth.signInWithCredential(error.credential).then(() => {
+                        localStorage.removeItem('hms_synced_once');
+                        showToast("مرحباً بعودتك! 👋", "تم تسجيل الدخول بحسابك القديم. جاري جلب ملفاتك...");
+                    });
+                } else {
+                    showToast("إلغاء", "تم إلغاء عملية تسجيل الدخول أو حدث خطأ بالاتصال.");
+                }
+            }
+        }
+
+        // تسجيل الخروج
+        function signOutUser() {
+            if(confirm("هل أنت متأكد من تسجيل الخروج؟\nستتمكن من استعادة مهامك حين تسجل دخولك مرة أخرى.")) {
+                auth.signOut().then(() => {
+                    // تفريغ البيانات المحلية حتى لا تتداخل مع الحساب الجديد
+                    localforage.removeItem('achievement_planner_state_v4');
+                    localStorage.removeItem('achievement_planner_state_v4');
+                    localStorage.removeItem('hms_user_name');
+                    localStorage.removeItem('hms_user_gender');
+                    
+                    showToast("تم الخروج", "جاري إعادة تهيئة التطبيق كزائر...");
+                    setTimeout(() => location.reload(), 1500);
+                });
+            }
+        }
 
         // دالة حفظ ملف المستخدم في السيرفر والمحلي
         function saveUserProfile() {
