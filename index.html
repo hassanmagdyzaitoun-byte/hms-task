@@ -6157,7 +6157,7 @@ window.addEventListener('appinstalled', () => {
                 currentUser = user;
                 updateAuthUI(user);
                 
-                // 1. جلب بيانات الحساب الأساسية (الاسم والقسم)
+                // جلب أو إنشاء ملف العضو بالمجموعات
                 db.ref(`users/${currentUser.uid}`).once('value').then((snapshot) => {
                     if (snapshot.exists()) {
                         const userData = snapshot.val();
@@ -6169,14 +6169,12 @@ window.addEventListener('appinstalled', () => {
                         loadPublicGroups();
                         checkUrlForInvite();
                     } else {
-                        // 🛡️ حماية الإصدار الجديد: لو لم يجد حسابك بالسيرفر ولكنه موجود بالمتصفح محلياً، يرفعه للسيرفر فوراً
+                        // لو كان حساباً جديداً، نفحص هل لديه اسم مسجل محلياً بالمتصفح لرفع ملفه الشخصي للسيرفر
                         const localName = localStorage.getItem('hms_user_name');
                         const localGender = localStorage.getItem('hms_user_gender');
-                        
                         if (localName && localGender) {
                             userName = localName;
                             userGender = localGender;
-                            
                             db.ref(`users/${currentUser.uid}`).set({
                                 name: localName,
                                 gender: localGender,
@@ -6187,21 +6185,24 @@ window.addEventListener('appinstalled', () => {
                                 checkUrlForInvite();
                             });
                         } else {
-                            // مستخدم جديد كلياً لم يسجل اسمه بعد
+                            // زائر جديد كلياً لم يسجل اسمه بعد
                             userName = '';
                             userGender = '';
                             updateSectionTitleUI();
                         }
                     }
-                });
+                }).catch(err => console.error("Error fetching user:", err));
 
-                // ☁️ 2. السحر الحقيقي: استماع "لحظي" لكل تغييرات بياناتك على السيرفر!
+                // ☁️ المزامنة السحابية الذكية والشاملة لجميع مسارات التطبيق
                 if (!user.isAnonymous) {
                     db.ref(`users/${currentUser.uid}/appData`).on('value', (snapshot) => {
+                        const todayStr = state.currentDate || new Date().toISOString().split('T')[0];
+
                         if (snapshot.exists()) {
+                            // الحساب قديم ولديه بيانات سحابية مخزنة، نقوم بتنزيلها فوراً
                             const cloudData = snapshot.val();
                             
-                            // حقن البيانات السحابية في المتغيرات المحلية
+                            // حقن البيانات السحابية في المتغيرات المحلية لفرشها
                             if (cloudData.history) state.history = cloudData.history;
                             if (cloudData.courses) state.courses = cloudData.courses;
                             if (cloudData.customCourses) state.customCourses = cloudData.customCourses; 
@@ -6216,19 +6217,15 @@ window.addEventListener('appinstalled', () => {
                             if (cloudData.gamification) state.gamification = cloudData.gamification;
                             if (cloudData.rewards) state.rewards = cloudData.rewards;
 
-                            // حفظ نسخة احتياطية محلية
                             localforage.setItem('achievement_planner_state_v4', cloudData);
 
-                            const todayStr = state.currentDate || new Date().toISOString().split('T')[0];
-
-                            // 🛡️ الموقف الأول: إذا كانت هذه أول مرة نفتح فيها الجهاز الجديد، نقوم بتجهيز اليوم بالكامل بالقوة (فرش الأوراق)
+                            // تفعيل الفرش لمرة واحدة فقط لمنع قفز المؤشرات والـ Cursor
                             if(!localStorage.getItem('hms_synced_once')) {
                                 localStorage.setItem('hms_synced_once', 'true');
-                                loadDateData(todayStr); // هذه الدالة تفرش المهام على الشاشة وتجهز الواجهة
-                                showToast("مزامنة سحابية ☁️", "تم جلب وتحديث جميع بياناتك (مهام، مسودات، قرآن) من السيرفر بنجاح.");
-                            } 
-                            // الموقف الثاني: نحن نعمل بالفعل والمزامنة تحدث في الخلفية، نحدث الشاشة بهدوء وتحديث صامت
-                            else {
+                                loadDateData(todayStr);
+                                showToast("مزامنة سحابية ☁️", "تم استرجاع جميع مهامك وإنجازاتك من السيرفر بنجاح.");
+                            } else {
+                                // تحديث صامت وهادئ في الخلفية لتجنب تداخل المدخلات
                                 const notesInput = document.getElementById('daily-notes-input');
                                 const quranNotesInput = document.getElementById('quran-notes-input');
                                 const draftInput = document.getElementById('new-saved-note-input');
@@ -6237,7 +6234,6 @@ window.addEventListener('appinstalled', () => {
                                 const isTypingQuran = document.activeElement === quranNotesInput;
                                 const isTypingDraft = document.activeElement === draftInput;
                                 
-                                // تحديث الشاشة فوراً لتعكس البيانات الجديدة
                                 renderAllTasksAndTables();
                                 renderStudyPath();
                                 renderTodoList();
@@ -6257,10 +6253,14 @@ window.addEventListener('appinstalled', () => {
                                 }
                                 renderQuranTab();
                             }
+                        } else {
+                            // حساب جديد كلياً وليس لديه بيانات على السيرفر، نقوم برفع بياناته المحلية الحالية لتأمينها سحابياً
+                            saveState(); 
                         }
                     });
                 }
             } else {
+                // إذا لم يكن مسجلاً بأي طريقة (جديد تماماً)، قم بتسجيله كزائر مبدئياً
                 auth.signInAnonymously().catch((error) => console.error("Auth Error:", error));
             }
         });
@@ -6293,32 +6293,31 @@ window.addEventListener('appinstalled', () => {
             }
         }
 
-        // دالة الدخول الذكية (تربط الحساب إن كان جديداً، أو تفتح الحساب القديم إن كنت على جهاز آخر)
+        // دالة الدخول المباشر والآمن بـ Google لتجنب قيود الأمان والمتصفحات المزعجة
         async function linkAccountWithGoogle() {
             const provider = new firebase.auth.GoogleAuthProvider();
             try {
-                showToast("جاري الاتصال...", "يرجى الانتظار لتأمين حسابك.");
-                if (currentUser && currentUser.isAnonymous) {
-                    // محاولة ربط حساب الزائر الحالي بحساب جوجل
-                    await currentUser.linkWithPopup(provider);
-                    localStorage.removeItem('hms_synced_once'); 
-                    saveState(); // رفع بيانات الهاتف الأول للسيرفر
-                    showToast("تم التأمين بنجاح! 🛡️", "تم ربط حسابك بجوجل. بياناتك ومهامك الآن آمنة.");
-                } else {
-                    await auth.signInWithPopup(provider);
-                }
+                showToast("جاري الاتصال...", "يرجى الانتظار...");
+                // تسجيل دخول مباشر وآمن يتفادى كل مشاكل تعارض الحسابات
+                await auth.signInWithPopup(provider);
+                localStorage.removeItem('hms_synced_once');
+                showToast("نجاح ✅", "تم تسجيل الدخول بنجاح.");
             } catch (error) {
-                if (error.code === 'auth/credential-already-in-use') {
-                    // 💡 تم كشف حساب قديم! (أنت تستخدم جهازاً آخر)
-                    // نقوم بتسجيل الدخول مباشرة لاسترجاع البيانات وإهمال الحساب الفارغ
-                    auth.signInWithPopup(provider).then(() => {
-                        localStorage.removeItem('hms_synced_once');
-                        showToast("مرحباً بعودتك! 👋", "جاري تحميل بياناتك من السيرفر...");
-                        setTimeout(() => location.reload(), 1500); // تحديث الصفحة لفرش البيانات
-                    }).catch(e => showToast("خطأ", "تعذر تسجيل الدخول."));
-                } else {
-                    showToast("إلغاء", "تم إلغاء عملية تسجيل الدخول أو حدث خطأ بالاتصال.");
-                }
+                console.error("Auth Error:", error);
+                showToast("خطأ ⚠️", "تعذر تسجيل الدخول. تأكد من اتصالك بالإنترنت.");
+            }
+        }
+
+        // تسجيل الخروج وإعادة التهيئة
+        function signOutUser() {
+            if(confirm("هل أنت متأكد من تسجيل الخروج؟\nستتمكن من استعادة مهامك السحابية بمجرد تسجيل الدخول مرة أخرى.")) {
+                auth.signOut().then(() => {
+                    // تفريغ المتصفح محلياً لبدء صفحة زائر جديدة نظيفة
+                    localforage.removeItem('achievement_planner_state_v4');
+                    localStorage.clear();
+                    showToast("تم الخروج", "جاري إعادة تهيئة التطبيق...");
+                    setTimeout(() => location.reload(), 1500);
+                });
             }
         }
 
